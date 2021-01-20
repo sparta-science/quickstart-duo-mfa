@@ -310,8 +310,6 @@ Resources:
               except Exception as e:
                   print("sendResponse(..) failed executing requests.put(..): " + str(e))
 
-
-
   #--------------------------------------------------
   # CloudFormation uses this custom resource to invoke
   # the Lambda function to look up the ID of the
@@ -440,6 +438,61 @@ Resources:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Roles: [!Ref InstanceRole]
+
+  #--------------------------------------------------
+  # IAM Role to execute Lambda that adds
+  # Directory Service security group outbound rule
+  #--------------------------------------------------
+  UpdateDirectoryServiceSecurityGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub UpdateDirectoryServiceSecurityGroupRole-${DirectoryServiceId}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ lambda.amazonaws.com ]
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: UpdateDirectoryServiceSecurityGroupEgress
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupEgress
+                # Can I do this? Is this how works?
+                # Is the sg's ARN available on the GetDirSvcDetails?
+                # From which vars can I get Region and Acct Id?
+                Resource: !Sub "arn:aws:ec2:::security-group/${GetDirectoryServiceDetails.SecurityGroupId}"
+
+  #-------------------------------------------------
+  # Function to set outbound rule on DS's DNS s/g
+  # allowing UDP traffic on port 1812
+  #-------------------------------------------------
+  SetOutboundUDPRule:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: SetDS-DNSOutboundUDPRule
+      Description: |
+        Sets rule on security group for Directory Service's DNS servers
+        allowing outbound UDP traffic on port 1812 to security group of
+        RADIUS instances
+      Environment:
+        Variables:
+            radius_security_group_arn: !GetAtt GetDirectoryServiceDetails.SecurityGroupId
+      Handler: index.update_sg_outbound_rule
+      MemorySize: 1024
+      Role:
+      Runtime: python3.6
+      Timeout: 180
+      Tags:
+      Code: |
+        # Set rule on security group for DNS servers of Directory Service
+        # How do get that security group's ID?
 
   #-------------------------------------------------
   # Security group for Duo RADIUS proxy instances
