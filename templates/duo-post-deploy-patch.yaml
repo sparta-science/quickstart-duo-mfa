@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  Configure outbound UDP security group rules required for AWS Quickstart Duo MFA
+
+Parameters:
+  DirectoryServiceId:
+    Type: String
+    Description: >
+      ID of existing directory service (d-xxxxxxxxxx)
+    AllowedPattern: ^d\-[a-zA-Z0-9]{10,}$
+    ConstraintDescription: >
+      Directory Service Id must match pattern d-0123456789
+  DirectoryServiceSecurityGroupId:
+    Type: String
+    Description: >
+      Security group ID of Directory Service controllers
+
+Resources: 
+  #--------------------------------------------------
+  # IAM Role to execute Lambda that adds
+  # Directory Service security group outbound rule
+  #--------------------------------------------------
+  UpdateDirectoryServiceSecurityGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub UpdateDirectoryServiceSecurityGroupRole-${DirectoryServiceId}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ lambda.amazonaws.com ]
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: UpdateDirectoryServiceSecurityGroupEgress
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupEgress
+                # Can I do this? Is this how works?
+                # Is the sg's ARN available on the GetDirSvcDetails?
+                # From which vars can I get Region and Acct Id?
+                Resource: !Sub "arn:aws:ec2:::security-group/${DirectoryServiceSecurityGroupId}"
+
+  #-------------------------------------------------
+  # Function to set outbound rule on DS's DNS s/g
+  # allowing UDP traffic on port 1812
+  #-------------------------------------------------
+  SetOutboundUDPRuleFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: SetDS-DNSOutboundUDPRule
+      Description: |
+        Sets rule on security group for Directory Service's DNS servers
+        allowing outbound UDP traffic on port 1812 to security group of
+        RADIUS instances
+      Handler: index.lambda_handler
+      MemorySize: 1024
+      Role: !Sub UpdateDirectoryServiceSecurityGroupRole-${DirectoryServiceId}
+      Runtime: python3.6
+      Timeout: 180
+      Tags:
+        - Key: duo:DirectoryServiceId
+          Value: !Ref DirectoryServiceId
+        - Key: duo:DirectoryServiceSecurityGroupId
+          Value: !Ref DirectoryServiceSecurityGroupId
+      Code: |
+        # Set rule on security group for DNS servers of Directory Service
+        # How do get that security group's ID?
+
+  #-------------------------------------------------
+  # Custom resource to invoke function to add rule
+  # to AD controllers security group
+  # allowing outbound UDP on port 1812
+  #-------------------------------------------------
+  SetOutboundUDPRule:
+    Type: Custom::SetOutboundUDPRule
+    DependsOn: SetOutboundUDPRuleFunction
+    Properties:
+      ServiceToken: !GetAtt GetDirectoryServiceFunction.Arn
+      directory_id: !Ref DirectoryServiceId
+
+Outputs:
