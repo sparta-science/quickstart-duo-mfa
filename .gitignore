@@ -4,3 +4,4 @@ taskcat_outputs/
 .env
 *.pem
 .vscode/
+__pycache__

@@ -1,25 +1,23 @@
+import json
 import boto3
+from botocore.vendored import requests
 
-def update_sg_outbound_rule(*,
+def add_outbound_udp_rule(*,
     security_group_id,
     acct_id: str,
-    from_port,
-    to_port,
-    to_security_group,
-    ip_protocol
+    target_security_group_id
 ):
     ec2 = boto3.client('ec2')
 
     rule = {
-        'FromPort': from_port,
-        'ToPort': to_port or from_port
-    }
-
-    if to_security_group:
-        rule['UserIdGroupPairs'] = [{
-            'GroupId': to_security_group,
+        'FromPort': 1812,
+        'ToPort': 1812,
+        'UserIdGroupPairs': [{
+            'GroupId': target_security_group_id,
             'UserId': acct_id
-        }]
+        }],
+        'IpProtocol': 'udp'
+    }
 
     ec2.authorize_security_group_egress(
         GroupId=security_group_id,
@@ -30,13 +28,17 @@ def lambda_handler(event, context):
     """ If event is "Create", add new s/g egress rule
         If event is "Delete", remove existing rule
     """
-    security_group_id = event['security_group_id']
-    acct_id = event['acct_id'] # is this accessible thru the context object?
-    from_port = event['from_port']
-    to_port = event['to_port'] or from_port
+    security_group_id = event['ResourceProperties']['ds_security_group_id']
+    acct_id = event['ResourceProperties']['acct_id']
     radius_security_group_id = event['ResourceProperties']['radius_security_group_id']
-    ip_protocol = 'udp'
 
-    update_sg_outbound_rule(
+    add_outbound_udp_rule(
+        security_group_id=security_group_id,
+        acct_id=acct_id,
+        target_security_group_id=radius_security_group_id
+    )
 
+    requests.put(
+        event['ResponseURL'],
+        data=json.dumps({ 'Status': 'SUCCESS' })
     )
