@@ -3,17 +3,16 @@ Description: >
   Configure outbound UDP security group rules required for AWS Quickstart Duo MFA
 
 Parameters:
-  DirectoryServiceId:
-    Type: String
-    Description: >
-      ID of existing directory service (d-xxxxxxxxxx)
-    AllowedPattern: ^d\-[a-zA-Z0-9]{10,}$
-    ConstraintDescription: >
-      Directory Service Id must match pattern d-0123456789
   DirectoryServiceSecurityGroupId:
     Type: String
+    AllowedPattern: ^sg\-[\dA-Za-z]{8,}$
     Description: >
       Security group ID of Directory Service controllers
+  RadiusSecurityGroupID:
+    Type: String
+    AllowedPattern: ^sg\-[\dA-Za-z]{8,}$
+    Description: >
+      Security group ID of RADIUS servers
 
 Resources: 
   #--------------------------------------------------
@@ -82,6 +81,8 @@ Resources:
     DependsOn: SetOutboundUDPRuleFunction
     Properties:
       ServiceToken: !GetAtt GetDirectoryServiceFunction.Arn
-      directory_id: !Ref DirectoryServiceId
+      ds_security_group_id: !Ref DirectoryServiceSecurityGroupId
+      radius_security_group_id: !Ref RadiusSecurityGroupID
+      acct_id: !Ref AWS::AccountID
 
 Outputs:

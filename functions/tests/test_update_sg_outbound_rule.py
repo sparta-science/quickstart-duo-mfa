@@ -61,8 +61,8 @@ def test_lambda_handler_create(monkeypatch, mocker):
     requests_spy.assert_called_once_with(response_url, data=json.dumps({ 'Status': 'SUCCESS' }))
 
 def test_lambda_handler_delete(monkeypatch, mocker):
-    """ If lambda_handler called with 'Create'
-        expect that it calls ec2.authorize_security_group_egress
+    """ If lambda_handler called with 'Delete'
+        expect that it calls ec2.revoke_security_group_egress
         expect that it sends response 'SUCCESS'
     """
     ec2 = boto3.client('ec2')
