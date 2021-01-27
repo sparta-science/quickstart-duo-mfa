@@ -1,5 +1,5 @@
 import json
-from source import update_sg_outbound_rule as module
+from source import update_sg_udp_egress_rule as module
 import boto3
 from botocore.stub import Stubber, ANY
 from botocore.vendored import requests
