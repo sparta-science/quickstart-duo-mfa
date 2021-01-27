@@ -1,6 +1,7 @@
 import json
 import boto3
 from botocore.vendored import requests
+from botocore.exceptions import ClientError
 
 def construct_rule(*,
     acct_id: str,
@@ -36,12 +37,17 @@ def lambda_handler(event, context) -> None:
     response_body = { 'Status': FAILED }
 
     if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
-        ec2.authorize_security_group_egress(
-            GroupId=security_group_id,
-            IpPermissions=[ rule ]
-        )
+        try:
+            ec2.authorize_security_group_egress(
+                GroupId=security_group_id,
+                IpPermissions=[ rule ]
+            )
 
-        response_body['Status'] = SUCCESS
+            response_body['Status'] = SUCCESS
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'InvalidPermission.Duplicate':
+                response_body['Status'] = SUCCESS
+            else: raise e
 
     elif event['RequestType'] == 'Delete':
         ec2.revoke_security_group_egress(
