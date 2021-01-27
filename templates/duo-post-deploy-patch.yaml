@@ -70,7 +70,7 @@ Resources:
         - Key: duo:DirectoryServiceSecurityGroupId
           Value: !Ref DirectoryServiceSecurityGroupId
       Code:
-        ZipFile: |
+        ZipFile: | # TODO: This is copy-pasted here. I need a better solution.
           import json
           import boto3
           from botocore.vendored import requests
