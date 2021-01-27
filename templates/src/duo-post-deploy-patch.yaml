@@ -72,7 +72,7 @@ Resources:
 
             '
           - - "# Import external file"
-            - "%%{update_sg_udp_egress_rules.py}%%"
+            - "%%{functions/source/update_sg_udp_egress_rule.py}%%"
 
   #-------------------------------------------------
   # Custom resource to invoke function to add rule
