@@ -19,10 +19,10 @@ Resources:
   # IAM Role to execute Lambda that adds
   # Directory Service security group outbound rule
   #--------------------------------------------------
-  UpdateDirectoryServiceSecurityGroupRole:
+  DSSecurityGroupAddUDPEgressRuleRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub UpdateDirectoryServiceSecurityGroupRole-${DirectoryServiceId}
+      RoleName: !Sub DSSecurityGroupAddUDPEgressRuleRole-${DirectoryServiceSecurityGroupId}
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -33,7 +33,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: UpdateDirectoryServiceSecurityGroupEgress
+        - PolicyName: AddDirectoryServiceSecurityGroupEgress
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -49,40 +49,47 @@ Resources:
   # Function to set outbound rule on DS's DNS s/g
   # allowing UDP traffic on port 1812
   #-------------------------------------------------
-  SetOutboundUDPRuleFunction:
+  AddUDPEgressRuleFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: SetDS-DNSOutboundUDPRule
+      FunctionName: SetDS-DNSUDPEgressRule
       Description: |
         Sets rule on security group for Directory Service's DNS servers
         allowing outbound UDP traffic on port 1812 to security group of
         RADIUS instances
       Handler: index.lambda_handler
       MemorySize: 1024
-      Role: !Sub UpdateDirectoryServiceSecurityGroupRole-${DirectoryServiceId}
+      Role: !Sub DSSecurityGroupAddUDPEgressRuleRole-${DirectoryServiceSecurityGroupId}
       Runtime: python3.6
       Timeout: 180
       Tags:
-        - Key: duo:DirectoryServiceId
-          Value: !Ref DirectoryServiceId
         - Key: duo:DirectoryServiceSecurityGroupId
           Value: !Ref DirectoryServiceSecurityGroupId
-      Code: |
-        # Set rule on security group for DNS servers of Directory Service
-        # How do get that security group's ID?
+      Code:
+        ZipFile:
+          Fn::Join:
+          - '
+
+            '
+          - - "# Import external file"
+            - "%%{update_sg_udp_egress_rules.py}%%"
 
   #-------------------------------------------------
   # Custom resource to invoke function to add rule
   # to AD controllers security group
   # allowing outbound UDP on port 1812
   #-------------------------------------------------
-  SetOutboundUDPRule:
-    Type: Custom::SetOutboundUDPRule
-    DependsOn: SetOutboundUDPRuleFunction
+  AddUDPEgressRule:
+    Type: Custom::AddUDPEgressRule
     Properties:
-      ServiceToken: !GetAtt GetDirectoryServiceFunction.Arn
+      ServiceToken: !GetAtt AddUDPEgressRuleFunction.Arn
       ds_security_group_id: !Ref DirectoryServiceSecurityGroupId
       radius_security_group_id: !Ref RadiusSecurityGroupID
-      acct_id: !Ref AWS::AccountID
+      acct_id: !Ref AWS::AccountId
 
-Outputs:
+  #-------------------------------------------------
+  # Custom resource to invoke function to add rule
+  # to AD controllers security group
+  # allowing outbound UDP on port 1812
+  #-------------------------------------------------
+
