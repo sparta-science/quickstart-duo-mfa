@@ -178,7 +178,6 @@ def test_lambda_handler_duplicate_rule(monkeypatch, mocker):
 
     requests_spy.assert_called_once_with(response_url, data=json.dumps({ 'Status': 'SUCCESS' }))
 
-
 def test_lambda_handler_delete(monkeypatch, mocker):
     """ If lambda_handler called with 'Delete'
         expect that it calls ec2.revoke_security_group_egress
@@ -201,7 +200,9 @@ def test_lambda_handler_delete(monkeypatch, mocker):
     ip_protocol = 'udp'
 
     stubber.add_response('revoke_security_group_egress',
-        {}, # authorize_security_group_egress method returns None
+        # revoke_security_group_egress docs say it returns True on success
+        # but in fact it seems to return only ResponseMetadata
+        {},
         {
             'GroupId': ds_security_group_id,
             'IpPermissions': [{
@@ -234,6 +235,186 @@ def test_lambda_handler_delete(monkeypatch, mocker):
     stubber.assert_no_pending_responses()
 
     requests_spy.assert_called_once_with(response_url, data=json.dumps({ 'Status': 'SUCCESS' }))
+
+def test_lambda_handler_delete_not_found(monkeypatch, mocker):
+    """ If lambda_handler called with 'Delete'
+        and rule is not found
+        expect that it does not crash
+        expect that it sends response 'SUCCESS'
+    """
+    ec2 = boto3.client('ec2')
+    stubber = Stubber(ec2)
+
+    monkeypatch.setattr(
+        boto3,
+        'client',
+        lambda svc: ec2 if svc == 'ec2' else boto3.client(svc)
+    )
+
+    response_url = 'http://bucket.nowhere'
+    request_type = 'Delete'
+    acct_id = '1234567890'
+    ds_security_group_id = 'sg-123456abcdef'
+    radius_security_group_id = 'sg-abcdef123456'
+    ip_protocol = 'udp'
+
+    stubber.add_client_error('revoke_security_group_egress',
+        service_error_code='InvalidPermission.NotFound',
+        service_message='The specified rule does not exist in this security group.',
+        expected_params={
+            'GroupId': ds_security_group_id,
+            'IpPermissions': [{
+                'FromPort': ANY,
+                'ToPort': ANY,
+                'IpProtocol': ip_protocol,
+                'UserIdGroupPairs': [{
+                    'GroupId': radius_security_group_id,
+                    'UserId': acct_id
+                }]
+            }]
+        })
+
+    stubber.activate()
+
+    monkeypatch.setattr(requests, 'put', lambda url, *, data: url)
+    requests_spy = mocker.spy(requests, 'put')
+
+    # Action!
+    module.lambda_handler({
+        'RequestType': request_type,
+        'ResponseURL': response_url, # This will be a presigned URL from Cfn
+        'ResourceProperties': {
+            'acct_id': acct_id,
+            'ds_security_group_id': ds_security_group_id,
+            'radius_security_group_id': radius_security_group_id
+        }
+    }, {})
+
+    requests_spy.assert_called_once_with(response_url, data=json.dumps({ 'Status': 'SUCCESS' }))
+
+def test_lambda_handler_create_client_error_other(monkeypatch, mocker):
+    """ If lambda_handler called with 'Create'
+        and it raises for any reason other than ClientError: InvalidPermission.NotFound
+        expect that it sends response 'FAILED' with exception message as Reason
+    """
+    ec2 = boto3.client('ec2')
+    stubber = Stubber(ec2)
+
+    monkeypatch.setattr(
+        boto3,
+        'client',
+        lambda svc: ec2 if svc == 'ec2' else boto3.client(svc)
+    )
+
+    response_url = 'http://bucket.nowhere'
+    request_type = 'Create'
+    acct_id = '1234567890'
+    ds_security_group_id = 'sg-123456abcdef'
+    radius_security_group_id = 'sg-abcdef123456'
+    ip_protocol = 'udp'
+
+    error_message = 'Something else went wrong.'
+
+    stubber.add_client_error('authorize_security_group_egress',
+        service_error_code='Whatever.Whatever',
+        service_message=error_message,
+        expected_params={
+            'GroupId': ds_security_group_id,
+            'IpPermissions': [{
+                'FromPort': ANY,
+                'ToPort': ANY,
+                'IpProtocol': ip_protocol,
+                'UserIdGroupPairs': [{
+                    'GroupId': radius_security_group_id,
+                    'UserId': acct_id
+                }]
+            }]
+        })
+
+    stubber.activate()
+
+    monkeypatch.setattr(requests, 'put', lambda url, *, data: url)
+    requests_spy = mocker.spy(requests, 'put')
+
+    # Action!
+    module.lambda_handler({
+        'RequestType': request_type,
+        'ResponseURL': response_url, # This will be a presigned URL from Cfn
+        'ResourceProperties': {
+            'acct_id': acct_id,
+            'ds_security_group_id': ds_security_group_id,
+            'radius_security_group_id': radius_security_group_id
+        }
+    }, {})
+
+    stubber.assert_no_pending_responses()
+
+    requests_spy.assert_called_once_with(response_url, data=json.dumps({
+        'Status': 'FAILED',
+        'Reason': error_message
+    }))
+
+def test_lambda_handler_delete_client_error_other(monkeypatch, mocker):
+    """ If lambda_handler called with 'Delete'
+        and it raises anything other than InvalidPermission.NotFound
+        expect that it sends response 'FAILED' with exception message as Reason
+    """
+    ec2 = boto3.client('ec2')
+    stubber = Stubber(ec2)
+
+    monkeypatch.setattr(
+        boto3,
+        'client',
+        lambda svc: ec2 if svc == 'ec2' else boto3.client(svc)
+    )
+
+    response_url = 'http://bucket.nowhere'
+    request_type = 'Delete'
+    acct_id = '1234567890'
+    ds_security_group_id = 'sg-123456abcdef'
+    radius_security_group_id = 'sg-abcdef123456'
+    ip_protocol = 'udp'
+
+    error_message = 'Something unexpected happened.'
+
+    stubber.add_client_error('revoke_security_group_egress',
+        service_error_code='Whatever.Whatever',
+        service_message=error_message,
+        expected_params={
+            'GroupId': ds_security_group_id,
+            'IpPermissions': [{
+                'FromPort': ANY,
+                'ToPort': ANY,
+                'IpProtocol': ip_protocol,
+                'UserIdGroupPairs': [{
+                    'GroupId': radius_security_group_id,
+                    'UserId': acct_id
+                }]
+            }]
+        })
+
+    stubber.activate()
+
+    monkeypatch.setattr(requests, 'put', lambda url, *, data: url)
+    requests_spy = mocker.spy(requests, 'put')
+
+    # Action!
+    module.lambda_handler({
+        'RequestType': request_type,
+        'ResponseURL': response_url, # This will be a presigned URL from Cfn
+        'ResourceProperties': {
+            'acct_id': acct_id,
+            'ds_security_group_id': ds_security_group_id,
+            'radius_security_group_id': radius_security_group_id
+        }
+    }, {})
+
+    stubber.assert_no_pending_responses()
+
+    requests_spy.assert_called_once_with(response_url, data=json.dumps({
+        'Status': 'FAILED',
+        'Reason': error_message
+    }))
 
 def test_lambda_handler_unknown_request_type(monkeypatch, mocker):
     """ Expect lambda_handler to send Status: "FAILED" for uknown request type

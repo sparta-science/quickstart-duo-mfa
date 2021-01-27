@@ -35,6 +35,7 @@ def lambda_handler(event, context) -> None:
     FAILED = 'FAILED'
 
     response_body = { 'Status': FAILED }
+    response_body['Reason'] = ''
 
     if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
         try:
@@ -42,23 +43,30 @@ def lambda_handler(event, context) -> None:
                 GroupId=security_group_id,
                 IpPermissions=[ rule ]
             )
-
-            response_body['Status'] = SUCCESS
         except ClientError as e:
-            if e.response['Error']['Code'] == 'InvalidPermission.Duplicate':
-                response_body['Status'] = SUCCESS
-            else: raise e
+            # If rule-to-delete not found, that's ok. Move on
+            # for anything else, send exceptions tring as response
+            if e.response['Error']['Code'] != 'InvalidPermission.Duplicate':
+                response_body['Reason'] = e.response['Error']['Message']
 
     elif event['RequestType'] == 'Delete':
-        ec2.revoke_security_group_egress(
-            GroupId=security_group_id,
-            IpPermissions= [ rule ]
-        )
-
-        response_body['Status'] = SUCCESS
+        try:
+            ec2.revoke_security_group_egress(
+                GroupId=security_group_id,
+                IpPermissions= [ rule ]
+            )
+        except ClientError as e:
+            # If rule-to-delete not found, that's ok. Move on
+            # for anything else, send exceptions tring as response
+            if e.response['Error']['Code'] != 'InvalidPermission.NotFound':
+                response_body['Reason'] = e.response['Error']['Message']
 
     else:
-        response_body['Status'] = FAILED
         response_body['Reason'] = f'Unknown RequestType {event["RequestType"]}. Valid RequestTypes are "Create", "Update", "Delete".'
+
+
+    if response_body['Reason'] == '':
+        response_body['Status'] = SUCCESS
+        response_body.pop('Reason')
 
     requests.put(event['ResponseURL'], data=json.dumps(response_body))
