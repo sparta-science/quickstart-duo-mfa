@@ -35,7 +35,7 @@ def lambda_handler(event, context) -> None:
 
     response_body = { 'Status': FAILED }
 
-    if event['RequestType'] == 'Create':
+    if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
         ec2.authorize_security_group_egress(
             GroupId=security_group_id,
             IpPermissions=[ rule ]
@@ -52,12 +52,7 @@ def lambda_handler(event, context) -> None:
         response_body['Status'] = SUCCESS
 
     else:
-        # Not sure what to do in the case of 'Update'
-        # How can I find the previous rule to delete & add a new version of
-        # if the parameters of rule has changed?
-        # AFAIK, there are no IDs for rules.
-        # Rules are matched on their exact parameters.
         response_body['Status'] = FAILED
-        response_body['Reason'] = 'I don\'t know how to handle anything except "Create" and "Delete"'
+        response_body['Reason'] = f'Unknown RequestType {event["RequestType"]}. Valid RequestTypes are "Create", "Update", "Delete".'
 
     requests.put(event['ResponseURL'], data=json.dumps(response_body))
