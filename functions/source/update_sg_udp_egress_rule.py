@@ -17,6 +17,12 @@ def construct_rule(*,
         'IpProtocol': 'udp'
     }
 
+def get_error_message_for_boto_exception(e, ignore_code='') -> str:
+    if (not isinstance(e, ClientError)
+    or e.response['Error']['Code'] != ignore_code):
+        return str(e)
+    else: return ''
+
 def lambda_handler(event, context) -> None:
     """ If event is "Create", add new s/g egress rule
         If event is "Delete", remove existing rule
@@ -43,11 +49,13 @@ def lambda_handler(event, context) -> None:
                 GroupId=security_group_id,
                 IpPermissions=[ rule ]
             )
-        except ClientError as e:
+        except Exception as e:
             # If rule-to-delete not found, that's ok. Move on
             # for anything else, send exceptions tring as response
-            if e.response['Error']['Code'] != 'InvalidPermission.Duplicate':
-                response_body['Reason'] = e.response['Error']['Message']
+            response_body['Reason'] = get_error_message_for_boto_exception(
+                e,
+                ignore_code='InvalidPermission.Duplicate'
+            )
 
     elif event['RequestType'] == 'Delete':
         try:
@@ -55,11 +63,13 @@ def lambda_handler(event, context) -> None:
                 GroupId=security_group_id,
                 IpPermissions= [ rule ]
             )
-        except ClientError as e:
+        except Exception as e:
             # If rule-to-delete not found, that's ok. Move on
             # for anything else, send exceptions tring as response
-            if e.response['Error']['Code'] != 'InvalidPermission.NotFound':
-                response_body['Reason'] = e.response['Error']['Message']
+            response_body['Reason'] = get_error_message_for_boto_exception(
+                e,
+                ignore_code='InvalidPermission.NotFound'
+            )
 
     else:
         response_body['Reason'] = f'Unknown RequestType {event["RequestType"]}. Valid RequestTypes are "Create", "Update", "Delete".'

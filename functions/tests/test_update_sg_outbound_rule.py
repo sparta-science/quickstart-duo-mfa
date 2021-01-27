@@ -313,10 +313,13 @@ def test_lambda_handler_create_client_error_other(monkeypatch, mocker):
     radius_security_group_id = 'sg-abcdef123456'
     ip_protocol = 'udp'
 
+    op_name = 'authorize_security_group_egress'
+    java_op_name = ''.join(s.title() for s in op_name.split('_'))
+    error_code = 'Whatever.Whatever'
     error_message = 'Something else went wrong.'
 
-    stubber.add_client_error('authorize_security_group_egress',
-        service_error_code='Whatever.Whatever',
+    stubber.add_client_error(op_name,
+        service_error_code=error_code,
         service_message=error_message,
         expected_params={
             'GroupId': ds_security_group_id,
@@ -351,7 +354,12 @@ def test_lambda_handler_create_client_error_other(monkeypatch, mocker):
 
     requests_spy.assert_called_once_with(response_url, data=json.dumps({
         'Status': 'FAILED',
-        'Reason': error_message
+        'Reason': ClientError.MSG_TEMPLATE.format_map({
+            'error_code': error_code,
+            'operation_name': java_op_name,
+            'retry_info': '',
+            'error_message': error_message
+        })
     }))
 
 def test_lambda_handler_delete_client_error_other(monkeypatch, mocker):
@@ -375,10 +383,12 @@ def test_lambda_handler_delete_client_error_other(monkeypatch, mocker):
     radius_security_group_id = 'sg-abcdef123456'
     ip_protocol = 'udp'
 
+    op_name = 'revoke_security_group_egress'
+    error_code = 'Whatever.Whatever'
     error_message = 'Something unexpected happened.'
 
-    stubber.add_client_error('revoke_security_group_egress',
-        service_error_code='Whatever.Whatever',
+    stubber.add_client_error(op_name,
+        service_error_code=error_code,
         service_message=error_message,
         expected_params={
             'GroupId': ds_security_group_id,
@@ -413,7 +423,12 @@ def test_lambda_handler_delete_client_error_other(monkeypatch, mocker):
 
     requests_spy.assert_called_once_with(response_url, data=json.dumps({
         'Status': 'FAILED',
-        'Reason': error_message
+        'Reason': ClientError.MSG_TEMPLATE.format_map({
+            'error_code': error_code,
+            'operation_name': ''.join(s.title() for s in op_name.split('_')),
+            'retry_info': '',
+            'error_message': error_message
+        })
     }))
 
 def test_lambda_handler_unknown_request_type(monkeypatch, mocker):
