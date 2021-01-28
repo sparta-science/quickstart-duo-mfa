@@ -74,6 +74,7 @@ Resources:
           import json
           import boto3
           from botocore.vendored import requests
+          from botocore.exceptions import ClientError
 
           def construct_rule(*,
               acct_id: str,
@@ -88,6 +89,12 @@ Resources:
                   }],
                   'IpProtocol': 'udp'
               }
+
+          def get_error_message_for_boto_exception(e, ignore_code='') -> str:
+              if (not isinstance(e, ClientError)
+              or e.response['Error']['Code'] != ignore_code):
+                  return str(e)
+              else: return ''
 
           def lambda_handler(event, context) -> None:
               """ If event is "Create", add new s/g egress rule
@@ -107,31 +114,43 @@ Resources:
               FAILED = 'FAILED'
 
               response_body = { 'Status': FAILED }
+              response_body['Reason'] = ''
 
-              if event['RequestType'] == 'Create':
-                  ec2.authorize_security_group_egress(
-                      GroupId=security_group_id,
-                      IpPermissions=[ rule ]
-                  )
-
-                  response_body['Status'] = SUCCESS
+              if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
+                  try:
+                      ec2.authorize_security_group_egress(
+                          GroupId=security_group_id,
+                          IpPermissions=[ rule ]
+                      )
+                  except Exception as e:
+                      # If rule-to-delete not found, that's ok. Move on
+                      # for anything else, send exceptions tring as response
+                      response_body['Reason'] = get_error_message_for_boto_exception(
+                          e,
+                          ignore_code='InvalidPermission.Duplicate'
+                      )
 
               elif event['RequestType'] == 'Delete':
-                  ec2.revoke_security_group_egress(
-                      GroupId=security_group_id,
-                      IpPermissions= [ rule ]
-                  )
-
-                  response_body['Status'] = SUCCESS
+                  try:
+                      ec2.revoke_security_group_egress(
+                          GroupId=security_group_id,
+                          IpPermissions= [ rule ]
+                      )
+                  except Exception as e:
+                      # If rule-to-delete not found, that's ok. Move on
+                      # for anything else, send exceptions tring as response
+                      response_body['Reason'] = get_error_message_for_boto_exception(
+                          e,
+                          ignore_code='InvalidPermission.NotFound'
+                      )
 
               else:
-                  # Not sure what to do in the case of 'Update'
-                  # How can I find the previous rule to delete & add a new version of
-                  # if the parameters of rule has changed?
-                  # AFAIK, there are no IDs for rules.
-                  # Rules are matched on their exact parameters.
-                  response_body['Status'] = FAILED
-                  response_body['Reason'] = 'I don\'t know how to handle anything except "Create" and "Delete"'
+                  response_body['Reason'] = f'Unknown RequestType {event["RequestType"]}. Valid RequestTypes are "Create", "Update", "Delete".'
+
+
+              if response_body['Reason'] == '':
+                  response_body['Status'] = SUCCESS
+                  response_body.pop('Reason')
 
               requests.put(event['ResponseURL'], data=json.dumps(response_body))
 
